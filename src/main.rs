@@ -192,34 +192,34 @@ pub fn render(framebuffer: &mut Framebuffer, objects: &[Cube], camera: &Camera, 
 fn create_cube_grid() -> Vec<Cube> {
     let mut cubes = Vec::new();
 
-    let border_texture = Texture::new("assets/SIDE_GRASSTEXTURE.jpg");
-    let inner_texture = Texture::new("assets/UP_GRASSTEXTURE.jpg");
+    // Cargar texturas
+    let top_texture = Texture::new("assets/UP_GRASSTEXTURE.jpg");
+    let side_texture = Texture::new("assets/SIDE_GRASSTEXTURE.jpg");
 
-    // Crear materiales con texturas
-    let grass_material = Material::new(
-        Color::new(0, 255, 0), // Color difuso para el material interior
+    // Material para la cara superior con la textura de arriba
+    let top_material = Material::new(
+        Color::new(0, 255, 0), // Color base (solo por defecto)
         0.0,
         [1.0, 0.0, 0.0, 0.0],
         0.0,
-        Some(inner_texture), // Asigna la textura interior
+        Some(top_texture), // Asignar la textura de la parte superior
     );
-    let front_grass_material = Material::new(
-        Color::new(0, 150, 0), // Color difuso para el material frontal
+
+    // Material para los lados con la textura lateral
+    let side_material = Material::new(
+        Color::new(0, 150, 0), // Color base (solo por defecto)
         0.0,
         [1.0, 0.0, 0.0, 0.0],
         0.0,
-        Some(border_texture), // Asigna la textura del borde
+        Some(side_texture), // Asignar la textura lateral
     );
 
-
-    let grid_size = 10;
-    let cube_size = 0.5;
+    let grid_size = 5; // Plataforma 5x5
+    let cube_size = 0.5; // Tamaño de cada cubo
 
     // Calculamos el desplazamiento para centrar el grid
     let offset = (grid_size as f32 * cube_size) / 2.0;
-
-    // Ajuste para bajar la base en el eje Y
-    let y_offset = -2.0;  // Desplazamos la base hacia abajo
+    let y_offset = -2.0; // Desplazamos la base hacia abajo
 
     for x in 0..grid_size {
         for z in 0..grid_size {
@@ -227,18 +227,18 @@ fn create_cube_grid() -> Vec<Cube> {
             let min = Vec3::new(x as f32 * cube_size - offset, y_offset, z as f32 * cube_size - offset);
             let max = Vec3::new((x + 1) as f32 * cube_size - offset, cube_size + y_offset, (z + 1) as f32 * cube_size - offset);
 
-            let material = if x == 0 || x == grid_size - 1 || z == 0 || z == grid_size - 1 {
-                front_grass_material.clone()
-            } else {
-                grass_material.clone()
-            };
-
-            cubes.push(Cube::new(min, max, material));
+            // Crea un cubo con dos materiales: uno para la parte superior y otro para los lados
+            let cube = Cube::new_with_faces(min, max, top_material.clone(), side_material.clone(), vec!["top".to_string(), "left_right".to_string(), "front_back".to_string()]);
+            
+            // Añadir el cubo a la lista
+            cubes.push(cube);
         }
     }
 
     cubes
 }
+
+
 
 
 fn main() {
@@ -260,7 +260,7 @@ fn main() {
     window.set_position(500, 500);
     window.update();
 
-    let mut cubes = create_cube_grid(); // Declara cubes como mutable
+    let cubes = create_cube_grid(); // Declara cubes como mutable
 
 
 
