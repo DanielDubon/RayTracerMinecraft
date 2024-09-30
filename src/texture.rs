@@ -1,13 +1,11 @@
 use crate::color::Color;
 
-
 #[derive(Debug, Clone)] // Añade Debug y Clone aquí
 pub struct Texture {
     pub data: Vec<u8>, // Datos de la textura
     pub width: u32,
     pub height: u32,
 }
-
 
 impl Texture {
     pub fn new(image_path: &str) -> Texture {
@@ -17,7 +15,6 @@ impl Texture {
         let data = img.into_raw(); // Convierte la imagen a un vector de bytes
         Texture { data, width, height }
     }
-
 
     pub fn get_color(&self, u: f32, v: f32) -> Color {
         // Convertir coordenadas UV a índices de píxel
