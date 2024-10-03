@@ -1,23 +1,25 @@
 use crate::color::Color;
+use crate::texture::Texture;
 
 #[derive(Clone, Debug)]
 pub struct Material {
-    pub color: Color,            // Color of the material (e.g., green for grass)
-    pub shininess: f32,          // Specular shininess
-    pub properties: [f32; 4],    // Material properties: [diffuse, specular, reflectivity, transparency]
-    pub refractive_index: f32,   // Refractive index, useful for materials like glass or water
+    pub color: Color,
+    pub shininess: f32,
+    pub properties: [f32; 4],
+    pub refractive_index: f32,
+    pub textures: Vec<Texture>,
 }
 
-  impl Material {
-    pub const fn new(color: Color, shininess: f32, properties: [f32; 4], refractive_index: f32) -> Self {
-        Material {
+impl Material {
+    pub fn new(color: Color, shininess: f32, properties: [f32; 4], refractive_index: f32) -> Self {
+        Self {
             color,
             shininess,
             properties,
             refractive_index,
+            textures: Vec::new(),
         }
     }
-
 
     // Method to create a black material with default values
     pub fn black() -> Self {
@@ -26,7 +28,13 @@ pub struct Material {
             shininess: 0.0,                 // Default shininess
             properties: [0.0, 0.0, 0.0, 0.0], // Default properties (all set to 0)
             refractive_index: 1.0,          // Default refractive index (e.g., for air)
+            textures: Vec::new(),            // Add this line
         }
+    }
+
+    pub fn with_textures(mut self, textures: Vec<Texture>) -> Self {
+        self.textures = textures;
+        self
     }
 
     // Method to determine if the material is completely diffuse (no shininess)

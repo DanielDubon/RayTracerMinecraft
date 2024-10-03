@@ -17,7 +17,7 @@ mod texture;
 
 use framebuffer::Framebuffer;
 use color::Color;
-use ray_intersect::{Intersect, RayIntersect};
+use ray_intersect::{Intersect, RayIntersect, CubeFace};
 use camera::Camera;
 use light::Light;
 use crate::cube::Cube;
@@ -130,6 +130,18 @@ pub fn cast_ray(
     }
 
 
+    let material_color = if !intersect.material.textures.is_empty() {
+        let texture_index = match intersect.face {
+            CubeFace::Top => 0, // Grass texture
+            _ => 1, // Dirt texture for all other faces
+        };
+        let (u, v) = intersect.texture_coords();
+        intersect.material.textures[texture_index].sample(u, v)
+    } else {
+        intersect.material.color
+    };
+
+
     let light_dir = (light.position - intersect.point).normalize();
     let view_dir = (ray_origin - intersect.point).normalize();
     let reflect_dir = reflect(&-light_dir, &intersect.normal).normalize();
@@ -142,7 +154,7 @@ pub fn cast_ray(
 
     // Intensidad difusa
     let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
-    let diffuse = intersect.material.color * intersect.material.properties[0] * diffuse_intensity * light_intensity;
+    let diffuse = material_color * intersect.material.properties[0] * diffuse_intensity * light_intensity;
 
 
     // Intensidad especular
@@ -295,37 +307,49 @@ fn main() {
     );
 
 
+    // Define the grass top and dirt side textures
+    let grass_top_texture = Texture::load("assets/UP_GRASSTEXTURE.jpg").expect("Failed to load grass top texture");
+    let dirt_side_texture = Texture::load("assets/SIDE_GRASSTEXTURE.jpg").expect("Failed to load dirt side texture");
+
+
     // Define el material de césped
-    const GRASS: Material = Material::new(
+    let grass_texture = Texture::load("assets/UP_GRASSTEXTURE.jpg").expect("Failed to load grass texture");
+
+
+    let GRASS = Material::new(
         Color::new(0, 255, 0),  // Color verde
         50.0,                   // Ajuste el brillo si es necesario
         [0.8, 0.2, 0.0, 0.0],   // Ajusta las propiedades: difuso, especular, reflectividad, transparencia
         1.0
-    );
+    ).with_textures(vec![grass_top_texture, dirt_side_texture]);
 
 
-    const WOOD: Material = Material::new(
+    let wood_plank_texture = Texture::load("assets/wood_plank.jpg").expect("Failed to load wood plank texture");
+
+
+    let WOOD: Material = Material::new(
         Color::new(170, 137, 85),   // Color marrón típico de la madera
         30.0,                       // Ajuste el brillo
         [0.7, 0.2, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
         2.0                         // Índice de refracción (ajustado a 1.0 para superficies opacas)
-    );
+    ).with_textures(vec![wood_plank_texture.clone(), wood_plank_texture ]);
 
-    const STONE: Material = Material::new(
+
+    let STONE: Material = Material::new(
         Color::new(128, 128, 128),  // Color gris típico de la piedra
         30.0,                       // Brillo moderado, la piedra no refleja mucha luz
         [0.7, 0.1, 0.1, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
         1.0                         // Índice de refracción para superficies opacas
     );
 
-    const TREEWOOD: Material = Material::new(
+    let TREEWOOD: Material = Material::new(
         Color::new(139, 69, 19),    // Color marrón típico de la madera
         30.0,                       // Ajuste el brillo (puede ser más bajo para que la madera no se vea muy brillante)
         [0.7, 0.2, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
         1.0                         // Índice de refracción (ajustado a 1.0 para superficies opacas)
     );
 
-    const LEAVES: Material = Material::new(
+    let LEAVES: Material = Material::new(
         Color::new(34, 139, 34),    // Color verde típico de las hojas (#228B22)
         20.0,                       // Brillo ligeramente más bajo para las hojas
         [0.6, 0.3, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
@@ -333,7 +357,7 @@ fn main() {
     );
 
     // Material para Cristal
-const GLASS: Material = Material::new(
+    let GLASS: Material = Material::new(
     Color::new(0, 0, 0),  
     30.0,                      
     [0.1, 0.1, 0.1, 0.5],       // Propiedades: bajo difuso, alto especular, sin reflectividad, alta transparencia
@@ -343,55 +367,55 @@ const GLASS: Material = Material::new(
     // Define los objetos que componen el portal
     let objects = [
         
-        Cube { min: Vec3::new(-4.0, -2.5, -4.0), max: Vec3::new(4.0, -2.0, 4.0), material: GRASS }, // Base de cesped
+        Cube { min: Vec3::new(-4.0, -3.0, -4.0), max: Vec3::new(4.0, -2.0, 4.0), material: GRASS.clone() }, // Base de cesped
        
       // Pared trasera (parte de atrás de la casa)
-      Cube { min: Vec3::new(-2.0, -2.0, -2.0), max: Vec3::new(2.0, 0.0, -1.5), material: WOOD },
+      Cube { min: Vec3::new(-2.0, -2.0, -2.0), max: Vec3::new(2.0, 0.0, -1.5), material: WOOD.clone() },
 
       // Pared izquierda
-      Cube { min: Vec3::new(-2.0, -2.0, -2.0), max: Vec3::new(-1.5, 0.0, 2.0), material: WOOD },
+      Cube { min: Vec3::new(-2.0, -2.0, -2.0), max: Vec3::new(-1.5, 0.0, 2.0), material: WOOD.clone() },
    
       // Parte inferior de la pared derecha
-      Cube { min: Vec3::new(1.5, -2.0, -2.0), max: Vec3::new(2.0, -1.5, 2.0), material: WOOD },
+      Cube { min: Vec3::new(1.5, -2.0, -2.0), max: Vec3::new(2.0, -1.5, 2.0), material: WOOD.clone() },
 
     // Parte derecha de la pared derecha
-    Cube { min: Vec3::new(1.5, -2.0, -2.0), max: Vec3::new(2.0, 0.0, -0.5), material: WOOD },
+    Cube { min: Vec3::new(1.5, -2.0, -2.0), max: Vec3::new(2.0, 0.0, -0.5), material: WOOD.clone() },   
 
     // Parte izquierda de la pared derecha
-    Cube { min: Vec3::new(1.5, -2.0, 1.5), max: Vec3::new(2.0, 0.0, 0.5), material: WOOD },
+    Cube { min: Vec3::new(1.5, -2.0, 1.5), max: Vec3::new(2.0, 0.0, 0.5), material: WOOD.clone() },
 
     // Parte superior de la pared derecha (arriba de la ventana)
-     Cube { min: Vec3::new(1.5, -0.5, -2.0), max: Vec3::new(2.0, 0.0, 2.0), material: WOOD },
+     Cube { min: Vec3::new(1.5, -0.5, -2.0), max: Vec3::new(2.0, 0.0, 2.0), material: WOOD.clone() },
 
      // Cristal para la ventana
-    Cube { min: Vec3::new(1.5, -2.0, 0.5), max: Vec3::new(2.0, -0.5, -0.5), material: GLASS },
+    Cube { min: Vec3::new(1.5, -2.0, 0.5), max: Vec3::new(2.0, -0.5, -0.5), material: GLASS.clone() },
     
 
       // Pared frontal izquierda (antes de la puerta)
-      Cube { min: Vec3::new(-2.0, -2.0, 1.5), max: Vec3::new(-0.5, 0.0, 2.0), material: WOOD },
+      Cube { min: Vec3::new(-2.0, -2.0, 1.5), max: Vec3::new(-0.5, 0.0, 2.0), material: WOOD.clone() },
   
       // Pared frontal derecha (después de la puerta)
-      Cube { min: Vec3::new(0.5, -2.0, 1.5), max: Vec3::new(2.0, 0.0, 2.0), material: WOOD },
+      Cube { min: Vec3::new(0.5, -2.0, 1.5), max: Vec3::new(2.0, 0.0, 2.0), material: WOOD.clone() },
   
       // Pared frontal encima de la puerta
-      Cube { min: Vec3::new(-0.5, -1.0, 1.5), max: Vec3::new(0.5, 0.0, 2.0), material: WOOD },
+      Cube { min: Vec3::new(-0.5, -1.0, 1.5), max: Vec3::new(0.5, 0.0, 2.0), material: WOOD.clone() },
   
       // Techo de la casa
-      Cube { min: Vec3::new(-2.5, 0.0, -2.5), max: Vec3::new(2.5, 0.5, 2.5), material: STONE },
-      Cube { min: Vec3::new(-2.0, 0.5, -2.0), max: Vec3::new(2.0, 1.0, 2.0), material: STONE },
-      Cube { min: Vec3::new(-1.5, 1.0, -1.5), max: Vec3::new(1.5, 1.5, 1.5), material: STONE },
-      Cube { min: Vec3::new(-1.0, 1.5, -1.0), max: Vec3::new(1.0, 2.0, 1.0), material: STONE },
+      Cube { min: Vec3::new(-2.5, 0.0, -2.5), max: Vec3::new(2.5, 0.5, 2.5), material: STONE.clone() },
+      Cube { min: Vec3::new(-2.0, 0.5, -2.0), max: Vec3::new(2.0, 1.0, 2.0), material: STONE.clone() },
+      Cube { min: Vec3::new(-1.5, 1.0, -1.5), max: Vec3::new(1.5, 1.5, 1.5), material: STONE.clone() },
+      Cube { min: Vec3::new(-1.0, 1.5, -1.0), max: Vec3::new(1.0, 2.0, 1.0), material: STONE.clone() },
 
 
      // Tronco del árbol (hecho de 4 cubos de madera apilados en la esquina superior izquierda)
-     Cube { min: Vec3::new(-3.5, -2.0, 3.0), max: Vec3::new(-3.0, -1.5, 3.5), material: TREEWOOD },
-     Cube { min: Vec3::new(-3.5, -1.5, 3.0), max: Vec3::new(-3.0, -1.0, 3.5), material: TREEWOOD },
-     Cube { min: Vec3::new(-3.5, -1.0, 3.0), max: Vec3::new(-3.0, -0.5, 3.5), material: TREEWOOD },
-     Cube { min: Vec3::new(-3.5, -0.5, 3.0), max: Vec3::new(-3.0, 0.0, 3.5), material: TREEWOOD },
+     Cube { min: Vec3::new(-3.5, -2.0, 3.0), max: Vec3::new(-3.0, -1.5, 3.5), material: TREEWOOD.clone() },
+     Cube { min: Vec3::new(-3.5, -1.5, 3.0), max: Vec3::new(-3.0, -1.0, 3.5), material: TREEWOOD.clone() },
+     Cube { min: Vec3::new(-3.5, -1.0, 3.0), max: Vec3::new(-3.0, -0.5, 3.5), material: TREEWOOD.clone() },
+     Cube { min: Vec3::new(-3.5, -0.5, 3.0), max: Vec3::new(-3.0, 0.0, 3.5), material: TREEWOOD.clone() },
  
      // Hojas del árbol (hechas de cubos, ajustadas a la nueva posición)
-     Cube { min: Vec3::new(-4.0, 0.0, 2.5), max: Vec3::new(-2.5, 0.5, 4.0), material: LEAVES }, // Capa inferior de hojas
-     Cube { min: Vec3::new(-3.75, 0.5, 2.75), max: Vec3::new(-2.75, 1.0, 3.75), material: LEAVES }, // Capa superior de hojas
+     Cube { min: Vec3::new(-4.0, 0.0, 2.5), max: Vec3::new(-2.5, 0.5, 4.0), material: LEAVES.clone() }, // Capa inferior de hojas
+     Cube { min: Vec3::new(-3.75, 0.5, 2.75), max: Vec3::new(-2.75, 1.0, 3.75), material: LEAVES.clone() }, // Capa superior de hojas
  
   ];
 

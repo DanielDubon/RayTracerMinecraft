@@ -1,6 +1,6 @@
 use nalgebra_glm::Vec3;
 use crate::Material;
-use crate::ray_intersect::{RayIntersect, Intersect};
+use crate::ray_intersect::{RayIntersect, Intersect, CubeFace};
 
 
 pub struct Cube {
@@ -36,6 +36,73 @@ impl Cube {
             return Vec3::new(0.0, 0.0, -1.0);
         }
         Vec3::new(0.0, 0.0, 1.0)
+    }
+
+    pub fn intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Intersect {
+        let mut tmin = (self.min.x - ray_origin.x) / ray_direction.x;
+        let mut tmax = (self.max.x - ray_origin.x) / ray_direction.x;
+
+        if tmin > tmax {
+            std::mem::swap(&mut tmin, &mut tmax);
+        }
+
+        let mut tymin = (self.min.y - ray_origin.y) / ray_direction.y;
+        let mut tymax = (self.max.y - ray_origin.y) / ray_direction.y;
+
+        if tymin > tymax {
+            std::mem::swap(&mut tymin, &mut tymax);
+        }
+
+        if tmin > tymax || tymin > tmax {
+            return Intersect::empty();
+        }
+
+        tmin = tmin.max(tymin);
+        tmax = tmax.min(tymax);
+
+        let mut tzmin = (self.min.z - ray_origin.z) / ray_direction.z;
+        let mut tzmax = (self.max.z - ray_origin.z) / ray_direction.z;
+
+        if tzmin > tzmax {
+            std::mem::swap(&mut tzmin, &mut tzmax);
+        }
+
+        if tmin > tzmax || tzmin > tmax {
+            return Intersect::empty();
+        }
+
+        tmin = tmin.max(tzmin);
+        tmax = tmax.min(tzmax);
+
+        if tmin < 0.0 && tmax < 0.0 {
+            return Intersect::empty();
+        }
+
+        let intersection_point = ray_origin + ray_direction * tmin;
+
+        // Determine which face was hit
+        let face = if (intersection_point.x - self.min.x).abs() < 1e-4 {
+            CubeFace::Left
+        } else if (intersection_point.x - self.max.x).abs() < 1e-4 {
+            CubeFace::Right
+        } else if (intersection_point.y - self.min.y).abs() < 1e-4 {
+            CubeFace::Bottom
+        } else if (intersection_point.y - self.max.y).abs() < 1e-4 {
+            CubeFace::Top
+        } else if (intersection_point.z - self.min.z).abs() < 1e-4 {
+            CubeFace::Back
+        } else {
+            CubeFace::Front
+        };
+
+        Intersect {
+            is_intersecting: true,
+            point: intersection_point,
+            normal: self.calculate_normal(intersection_point),
+            distance: tmin,
+            material: self.material.clone(),
+            face,
+        }
     }
 }
 
@@ -83,12 +150,28 @@ impl RayIntersect for Cube {
 
         let intersection_point = ray_origin + ray_dir * tmin;
 
+        // Determine which face was hit
+        let face = if (intersection_point.x - self.min.x).abs() < 1e-4 {
+            CubeFace::Left
+        } else if (intersection_point.x - self.max.x).abs() < 1e-4 {
+            CubeFace::Right
+        } else if (intersection_point.y - self.min.y).abs() < 1e-4 {
+            CubeFace::Bottom
+        } else if (intersection_point.y - self.max.y).abs() < 1e-4 {
+            CubeFace::Top
+        } else if (intersection_point.z - self.min.z).abs() < 1e-4 {
+            CubeFace::Back
+        } else {
+            CubeFace::Front
+        };
+
         Intersect {
             point: intersection_point,
             distance: tmin,
             normal: self.calculate_normal(intersection_point),
             material: self.material.clone(),
             is_intersecting: true,
+            face,  // Add this line
         }
     }
 }
