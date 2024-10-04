@@ -73,30 +73,25 @@ fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
 }
 
 
-fn cast_shadow(
-    intersect: &Intersect,
-    light: &Light,
-    objects: &[Cube],
-) -> f32 {
-    let light_dir = (light.position - intersect.point).normalize();
-    let light_distance = (light.position - intersect.point).magnitude();
+fn cast_shadow(intersect: &Intersect, light: &Light, objects: &[Cube]) -> f32 {
+    let light_dir = light.position - intersect.point;
+    let distance_to_light = light_dir.magnitude();
+    
+    if distance_to_light > light.radius {
+        return 1.0;
+    }
 
-
-    let shadow_ray_origin = offset_origin(intersect, &light_dir);
-    let mut shadow_intensity = 0.0;
-
+    let light_dir = light_dir.normalize();
+    let shadow_ray_origin = intersect.point + light_dir * 0.001;
 
     for object in objects {
-        let shadow_intersect = object.ray_intersect(&shadow_ray_origin, &light_dir);
-        if shadow_intersect.is_intersecting && shadow_intersect.distance < light_distance {
-            let distance_ratio = shadow_intersect.distance / light_distance;
-            shadow_intensity = 1.0 - distance_ratio.powf(2.0).min(1.0);
-            break;
+        let shadow_intersect = object.intersect(&shadow_ray_origin, &light_dir);
+        if shadow_intersect.is_intersecting && shadow_intersect.distance < distance_to_light {
+            return 0.95; // Permitimos que algo de luz pase a través de los objetos
         }
     }
 
-
-    shadow_intensity
+    0.0
 }
 
 
@@ -104,7 +99,8 @@ pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
     objects: &[Cube],
-    light: &Light,
+    lights: &[Light],
+    ambient_color: &Color,
     depth: u32,
 ) -> Color {
     if depth > 3 {
@@ -126,7 +122,12 @@ pub fn cast_ray(
 
 
     if !intersect.is_intersecting {
-        return SKYBOX_COLOR;
+        // Simular el color del cielo basado en la dirección del rayo y la posición del sol
+        let sun_dir = lights[0].position.normalize();
+        let sun_intensity = ray_direction.dot(&sun_dir).max(0.0).powf(20.0);
+        let sky_color = ambient_color.mul_scalar(0.5); // Color base del cielo
+        let sun_color = Color::new(255, 255, 200).mul_scalar(sun_intensity); // Color del sol
+        return sky_color + sun_color;
     }
 
 
@@ -155,25 +156,38 @@ pub fn cast_ray(
     };
 
 
-    let light_dir = (light.position - intersect.point).normalize();
-    let view_dir = (ray_origin - intersect.point).normalize();
-    let reflect_dir = reflect(&-light_dir, &intersect.normal).normalize();
+    let mut final_color = Color::new(0, 0, 0);
 
+    for light in lights {
+        let light_dir = light.position - intersect.point;
+        let distance_to_light = light_dir.magnitude();
+        
+        if distance_to_light <= light.radius {
+            let light_dir = light_dir.normalize();
+            let shadow_intensity = cast_shadow(&intersect, light, objects);
+            if shadow_intensity < 1.0 {  // Solo aplica la iluminación si no está completamente en sombra
+                let attenuation = 1.0 / (1.0 + distance_to_light * distance_to_light / (light.radius * light.radius));
+                let light_intensity = (1.0 - shadow_intensity) * light.intensity * attenuation;
 
-    // Calcula la intensidad de la sombra
-    let shadow_intensity = cast_shadow(&intersect, light, objects);
-    let light_intensity = light.intensity * (1.0 - shadow_intensity);
+                let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0);
+                let diffuse = material_color.mul(&light.color).mul_scalar(intersect.material.properties[0] * diffuse_intensity * light_intensity);
 
+                let view_dir = (ray_origin - intersect.point).normalize();
+                let halfway = (light_dir + view_dir).normalize();
+                let specular_intensity = halfway.dot(&intersect.normal).max(0.0).powf(intersect.material.shininess);
+                let specular = light.color.mul_scalar(intersect.material.properties[1] * specular_intensity * light_intensity);
 
-    // Intensidad difusa
-    let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
-    let diffuse = material_color * intersect.material.properties[0] * diffuse_intensity * light_intensity;
+                final_color = final_color + diffuse + specular;
+            }
+        }
+    }
 
+    // Añadimos la emisión de luz del material
+    final_color = final_color + intersect.material.emission;
 
-    // Intensidad especular
-    let specular_intensity = view_dir.dot(&reflect_dir).max(0.0).powf(intersect.material.shininess);
-    let specular = light.color * intersect.material.properties[1] * specular_intensity * light_intensity;
-
+    // Añade iluminación ambiental
+    let ambient = material_color.mul(ambient_color).mul_scalar(0.1);
+    final_color = final_color + ambient;
 
     // Color reflejado
     let mut reflect_color = Color::black();
@@ -181,7 +195,7 @@ pub fn cast_ray(
     if reflectivity > 0.0 {
         let reflect_dir = reflect(&ray_direction, &intersect.normal).normalize();
         let reflect_origin = offset_origin(&intersect, &reflect_dir);
-        reflect_color = cast_ray(&reflect_origin, &reflect_dir, objects, light, depth + 1);
+        reflect_color = cast_ray(&reflect_origin, &reflect_dir, objects, lights, ambient_color, depth + 1);
     }
 
 
@@ -191,18 +205,23 @@ pub fn cast_ray(
     if transparency > 0.0 {
         let refract_dir = refract(&ray_direction, &intersect.normal, intersect.material.refractive_index);
         let refract_origin = offset_origin(&intersect, &refract_dir);
-        refract_color = cast_ray(&refract_origin, &refract_dir, objects, light, depth + 1);
+        refract_color = cast_ray(&refract_origin, &refract_dir, objects, lights, ambient_color, depth + 1);
     }
 
 
-    // Combinación de los colores difuso, especular, reflejado y refractado
-    (diffuse + specular) * (1.0 - reflectivity - transparency) + (reflect_color * reflectivity) + (refract_color * transparency)
+    // Combinación de los colores difuso, especular, reflejado, refractado y emitido
+    let final_color = final_color * (1.0 - reflectivity - transparency) + 
+    (reflect_color * reflectivity) + 
+    (refract_color * transparency);
+
+
+    final_color
 }
 
 
 
 
-pub fn render(framebuffer: &mut Framebuffer, objects: &[Cube], camera: &Camera, light: &Light) {
+pub fn render(framebuffer: &mut Framebuffer, objects: &[Cube], camera: &Camera, lights: &[Light], ambient_color: &Color) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
     let aspect_ratio = width / height;
@@ -247,7 +266,7 @@ pub fn render(framebuffer: &mut Framebuffer, objects: &[Cube], camera: &Camera, 
 
 
 
-            let pixel_color = cast_ray(&camera.eye, &rotated_direction, objects, light, 0);
+            let pixel_color = cast_ray(&camera.eye, &rotated_direction, objects, lights, ambient_color, 0);
 
 
 
@@ -267,6 +286,82 @@ pub fn render(framebuffer: &mut Framebuffer, objects: &[Cube], camera: &Camera, 
         framebuffer.point(x as usize, y as usize);
     }
 }
+
+fn generate_lights_from_emissive_materials(objects: &[Cube]) -> Vec<Light> {
+    let mut lights = Vec::new();
+    for cube in objects {
+        if cube.material.emission != Color::new(0, 0, 0) {
+            let position = (cube.min + cube.max) * 0.5;
+            let intensity = cube.material.emission.intensity() * 0.1;
+            let radius = (cube.max - cube.min).magnitude() * 2.0;
+            lights.push(Light {
+                position,
+                color: cube.material.emission,
+                intensity,
+                radius,
+            });
+        }
+    }
+    lights
+}
+
+fn generate_lights_from_emissive_objects(objects: &[Cube]) -> Vec<Light> {
+    objects.iter()
+        .filter(|cube| cube.material.emission != Color::new(0, 0, 0))
+        .map(|cube| {
+            let position = (cube.min + cube.max) * 0.5;
+            let intensity = cube.material.emission.intensity() * 10.0;  // Aumentamos significativamente la intensidad
+            let radius = (cube.max - cube.min).magnitude() * 10.0;  // Aumentamos aún más el radio
+            Light::new(position, cube.material.emission, intensity, radius)
+        })
+        .collect()
+}
+
+struct DayNightCycle {
+    time: f32,
+    day_color: Color,
+    night_color: Color,
+    sun_position: Vec3,
+}
+
+impl DayNightCycle {
+    fn new() -> Self {
+        DayNightCycle {
+            time: 0.5, // Empezamos a mitad del día
+            day_color: Color::new(255, 255, 255),
+            night_color: Color::new(10, 10, 50),
+            sun_position: Vec3::new(0.0, 5.0, 0.0), // Posición inicial del sol
+        }
+    }
+
+    fn update(&mut self, delta: f32) {
+        self.time += delta;
+        if self.time > 1.0 {
+            self.time -= 1.0;
+        }
+        if self.time < 0.0 {
+            self.time += 1.0;
+        }
+
+        // Actualizar la posición del sol
+        let angle = self.time * 2.0 * std::f32::consts::PI;
+        self.sun_position = Vec3::new(
+            5.0 * angle.cos(),
+            5.0 * angle.sin().abs() + 1.0, // Mantiene el sol por encima del horizonte
+            5.0 * angle.sin(),
+        );
+    }
+
+    fn get_current_color(&self) -> Color {
+        let t = (self.time * std::f32::consts::PI * 2.0).sin() * 0.5 + 0.5;
+        Color::lerp(&self.night_color, &self.day_color, t)
+    }
+
+    fn get_light_intensity(&self) -> f32 {
+        ((self.time * std::f32::consts::PI * 2.0).sin() * 0.4 + 0.6).max(0.2)
+    }
+}
+
 fn main() {
     let window_width = 800;
     let window_height = 600;
@@ -292,7 +387,8 @@ fn main() {
     let light = Light::new(
          Vec3::new(4.0, 1.0, 5.0),
         Color::new(255, 255, 255), // Luz blanca
-        2.0                        // Incrementa la intensidad si es necesario
+        2.0,                       // Intensidad
+        10.0                       // Radio de influencia (ajusta este valor según sea necesario)
     );
 
 
@@ -372,7 +468,7 @@ fn main() {
         10.0,                       // Brillo ligeramente más bajo para las hojas
         [0.6, 0.3, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
         1.0                         // Índice de refracción para superficies opacas
-    ).with_textures(vec![leaves_texture.clone()]);;
+    ).with_textures(vec![leaves_texture.clone()]);
 
     // Material para Cristal
     let GLASS: Material = Material::new(
@@ -382,6 +478,16 @@ fn main() {
     1.2                         // Índice de refracción típico para el vidrio
 );
     
+    let glowstone_texture = Texture::load("assets/glowstone_texture.jpg").expect("Failed to load glowstone texture");
+
+    let GLOWSTONE: Material = Material::new(
+        Color::new(255, 255, 200),  // Color base amarillento
+        10.0,                       // Reducimos el brillo para que la textura sea más visible
+        [0.7, 0.3, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
+        1.0
+    ).with_textures(vec![glowstone_texture.clone()])
+     .with_emission(Color::new(255, 255, 150)); // Mantenemos la emisión fuerte
+
     // Define los objetos que componen el portal
     let objects = [
         
@@ -434,7 +540,24 @@ fn main() {
       Cube { min: Vec3::new(-3.5, 2.0, 2.5), max: Vec3::new(-2.0, 2.5, 4.0), material: LEAVES.clone() },
       Cube { min: Vec3::new(-3.5, 2.5, 2.5), max: Vec3::new(-2.0, 3.0, 4.0), material: LEAVES.clone() },
       Cube { min: Vec3::new(-3.0, 3.0, 3.0), max: Vec3::new(-2.5, 3.5, 3.5), material: LEAVES.clone() },
+
+      // Bloque de piedra luminosa al lado de la casa
+      Cube { min: Vec3::new(2.0, 0.0, -1.0), max: Vec3::new(2.5, 0.5, -0.5), material: GLOWSTONE.clone() },
   ];
+
+
+    // Genera luces adicionales a partir de materiales emisivos
+    let mut lights = vec![
+        Light::new(
+            Vec3::new(4.0, 1.0, 5.0),
+            Color::new(255, 255, 255),
+            1.0,  // Reducimos la intensidad de la luz principal
+            10.0
+        )
+    ];
+
+    // Añade las luces de los objetos emisivos
+    lights.extend(generate_lights_from_emissive_objects(&objects));
 
 
     // Inicializa la cámara
@@ -450,6 +573,9 @@ fn main() {
 
 
     let stone_texture = Texture::load("assets/stone_block.jpg").expect("Failed to load stone texture");
+
+
+    let mut day_night_cycle = DayNightCycle::new();
 
 
     while window.is_open() {
@@ -491,8 +617,26 @@ fn main() {
         }
 
 
+        if window.is_key_down(Key::Q) {
+            day_night_cycle.update(-0.005); // Avanzar hacia la noche
+        }
+        if window.is_key_down(Key::E) {
+            day_night_cycle.update(0.005);  // Avanzar hacia el día
+        }
+
+
+        let ambient_color = day_night_cycle.get_current_color();
+        let light_intensity = day_night_cycle.get_light_intensity();
+
+
+        // Actualizar la luz principal (sol)
+        lights[0].position = day_night_cycle.sun_position;
+        lights[0].color = ambient_color;
+        lights[0].intensity = light_intensity * 2.0; // Ajusta este factor según sea necesario
+
+
         // Dibuja los objetos
-        render(&mut framebuffer, &objects, &camera, &light);
+        render(&mut framebuffer, &objects, &camera, &lights, &ambient_color);
 
 
         // Actualiza la ventana con el contenido del framebuffer

@@ -29,6 +29,42 @@ impl Color {
     pub fn to_hex(&self) -> u32 {
         ((self.r as u32) << 16) | ((self.g as u32) << 8) | (self.b as u32)
     }
+
+    pub fn intensity(&self) -> f32 {
+        (self.r as f32 + self.g as f32 + self.b as f32) / (3.0 * 255.0)
+    }
+
+    pub fn lerp(a: &Color, b: &Color, t: f32) -> Color {
+        Color {
+            r: (a.r as f32 * (1.0 - t) + b.r as f32 * t) as u8,
+            g: (a.g as f32 * (1.0 - t) + b.g as f32 * t) as u8,
+            b: (a.b as f32 * (1.0 - t) + b.b as f32 * t) as u8,
+        }
+    }
+
+    pub fn mul(&self, other: &Color) -> Color {
+        Color {
+            r: ((self.r as f32 * other.r as f32) / 255.0) as u8,
+            g: ((self.g as f32 * other.g as f32) / 255.0) as u8,
+            b: ((self.b as f32 * other.b as f32) / 255.0) as u8,
+        }
+    }
+
+    pub fn mul_scalar(&self, scalar: f32) -> Color {
+        Color {
+            r: (self.r as f32 * scalar).min(255.0) as u8,
+            g: (self.g as f32 * scalar).min(255.0) as u8,
+            b: (self.b as f32 * scalar).min(255.0) as u8,
+        }
+    }
+
+    pub fn add(&self, other: &Color) -> Color {
+        Color {
+            r: (self.r as u16 + other.r as u16).min(255) as u8,
+            g: (self.g as u16 + other.g as u16).min(255) as u8,
+            b: (self.b as u16 + other.b as u16).min(255) as u8,
+        }
+    }
 }
 
 // Implement addition for Color
@@ -39,10 +75,18 @@ impl Add for Color {
 
     fn add(self, other: Color) -> Color {
         Color {
-            r: self.r.saturating_add(other.r),
-            g: self.g.saturating_add(other.g),
-            b: self.b.saturating_add(other.b),
+            r: (self.r as u16 + other.r as u16).min(255) as u8,
+            g: (self.g as u16 + other.g as u16).min(255) as u8,
+            b: (self.b as u16 + other.b as u16).min(255) as u8,
         }
+    }
+}
+
+impl Add<&Color> for Color {
+    type Output = Color;
+
+    fn add(self, other: &Color) -> Color {
+        self.add(other)
     }
 }
 

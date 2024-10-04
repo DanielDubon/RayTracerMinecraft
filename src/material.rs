@@ -8,17 +8,24 @@ pub struct Material {
     pub properties: [f32; 4],
     pub refractive_index: f32,
     pub textures: Vec<Texture>,
+    pub emission: Color,
 }
 
 impl Material {
     pub fn new(color: Color, shininess: f32, properties: [f32; 4], refractive_index: f32) -> Self {
-        Self {
+        Material {
             color,
             shininess,
             properties,
             refractive_index,
             textures: Vec::new(),
+            emission: Color::new(0, 0, 0), // Por defecto, no emite luz
         }
+    }
+
+    pub fn with_emission(mut self, emission: Color) -> Self {
+        self.emission = emission;
+        self
     }
 
     // Method to create a black material with default values
@@ -28,7 +35,8 @@ impl Material {
             shininess: 0.0,                 // Default shininess
             properties: [0.0, 0.0, 0.0, 0.0], // Default properties (all set to 0)
             refractive_index: 1.0,          // Default refractive index (e.g., for air)
-            textures: Vec::new(),            // Add this line
+            textures: Vec::new(),            // Empty textures vector
+            emission: Color::new(0, 0, 0),   // No emission for black material
         }
     }
 
