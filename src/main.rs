@@ -156,6 +156,8 @@ pub fn cast_ray(
     };
 
 
+    let is_glowstone = intersect.material.emission != Color::new(0, 0, 0);
+
     let mut final_color = Color::new(0, 0, 0);
 
     for light in lights {
@@ -165,7 +167,7 @@ pub fn cast_ray(
         if distance_to_light <= light.radius {
             let light_dir = light_dir.normalize();
             let shadow_intensity = cast_shadow(&intersect, light, objects);
-            if shadow_intensity < 1.0 {  // Solo aplica la iluminación si no está completamente en sombra
+            if shadow_intensity < 1.0 {
                 let attenuation = 1.0 / (1.0 + distance_to_light * distance_to_light / (light.radius * light.radius));
                 let light_intensity = (1.0 - shadow_intensity) * light.intensity * attenuation;
 
@@ -177,13 +179,23 @@ pub fn cast_ray(
                 let specular_intensity = halfway.dot(&intersect.normal).max(0.0).powf(intersect.material.shininess);
                 let specular = light.color.mul_scalar(intersect.material.properties[1] * specular_intensity * light_intensity);
 
-                final_color = final_color + diffuse + specular;
+                if is_glowstone {
+                    // Para el glowstone, usamos más el color de la textura y menos la iluminación calculada
+                    final_color = final_color + material_color.mul_scalar(0.7) + (diffuse + specular).mul_scalar(0.3);
+                } else {
+                    final_color = final_color + diffuse + specular;
+                }
             }
         }
     }
 
     // Añadimos la emisión de luz del material
-    final_color = final_color + intersect.material.emission;
+    if is_glowstone {
+        // Para el glowstone, mezclamos la emisión con el color de la textura
+        final_color = final_color.mul_scalar(0.6) + material_color.mul_scalar(0.4);
+    } else {
+        final_color = final_color + intersect.material.emission;
+    }
 
     // Añade iluminación ambiental
     let ambient = material_color.mul(ambient_color).mul_scalar(0.1);
@@ -475,7 +487,7 @@ fn main() {
     Color::new(0, 0, 0),  
     60.0,                      
     [0.1, 0.1, 0.1, 0.5],       // Propiedades: bajo difuso, alto especular, sin reflectividad, alta transparencia
-    1.2                         // Índice de refracción típico para el vidrio
+    1.0                         // Índice de refracción típico para el vidrio
 );
     
     let glowstone_texture = Texture::load("assets/glowstone_texture.jpg").expect("Failed to load glowstone texture");
@@ -483,7 +495,7 @@ fn main() {
     let GLOWSTONE: Material = Material::new(
         Color::new(255, 255, 200),  // Color base amarillento
         10.0,                       // Reducimos el brillo para que la textura sea más visible
-        [0.7, 0.3, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
+        [0.9, 0.1, 0.0, 0.0],       // Aumentamos el difuso, reducimos el especular
         1.0
     ).with_textures(vec![glowstone_texture.clone()])
      .with_emission(Color::new(255, 255, 150)); // Mantenemos la emisión fuerte
