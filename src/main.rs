@@ -131,12 +131,25 @@ pub fn cast_ray(
 
 
     let material_color = if !intersect.material.textures.is_empty() {
-        let texture_index = match intersect.face {
-            CubeFace::Top => 0, // Grass texture
-            _ => 1, // Dirt texture for all other faces
+        let texture_index = match &intersect.material.color {
+            color if *color == Color::new(0, 255, 0) => {
+                // Esto es césped
+                match intersect.face {
+                    CubeFace::Top => 0, // Textura de césped para la cara superior
+                    _ => 1, // Textura de tierra para las otras caras
+                }
+            },
+            color if *color == Color::new(128, 128, 128) => {
+                // Esto es piedra, usa la textura de piedra para todas las caras
+                0 // Asumiendo que la textura de piedra es la primera (y única) en el vector de texturas
+            },
+            _ => 0, // Para otros materiales, usa la primera textura
         };
         let (u, v) = intersect.texture_coords();
-        intersect.material.textures[texture_index].sample(u, v)
+        // Escala u y v para que coincidan con el tamaño de unidad de 0.5
+        let scaled_u = (u * 2.0) % 1.0;
+        let scaled_v = (v * 2.0) % 1.0;
+        intersect.material.textures[texture_index].sample(scaled_u, scaled_v)
     } else {
         intersect.material.color
     };
@@ -334,89 +347,93 @@ fn main() {
         2.0                         // Índice de refracción (ajustado a 1.0 para superficies opacas)
     ).with_textures(vec![wood_plank_texture.clone(), wood_plank_texture ]);
 
+    let stone_texture = Texture::load("assets/stone_block.jpg").expect("Failed to load stone texture");
 
     let STONE: Material = Material::new(
-        Color::new(128, 128, 128),  // Color gris típico de la piedra
-        30.0,                       // Brillo moderado, la piedra no refleja mucha luz
-        [0.7, 0.1, 0.1, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
-        1.0                         // Índice de refracción para superficies opacas
-    );
+    Color::new(128, 128, 128),  // Color gris típico de la piedra
+    30.0,                       // Brillo moderado, la piedra no refleja mucha luz
+    [0.7, 0.1, 0.1, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
+    1.0                         // Índice de refracción para superficies opacas
+).with_textures(vec![stone_texture.clone()]);  // Usa la misma textura para todas las caras
+    
+    let tree_plank_texture = Texture::load("assets/wood_rawplank.jpg").expect("Failed to load rawtree plank texture");
 
     let TREEWOOD: Material = Material::new(
         Color::new(139, 69, 19),    // Color marrón típico de la madera
-        30.0,                       // Ajuste el brillo (puede ser más bajo para que la madera no se vea muy brillante)
+        10.0,                       // Ajuste el brillo (puede ser más bajo para que la madera no se vea muy brillante)
         [0.7, 0.2, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
         1.0                         // Índice de refracción (ajustado a 1.0 para superficies opacas)
-    );
+    ).with_textures(vec![tree_plank_texture.clone()]);
+
+    let leaves_texture = Texture::load("assets/leaves_texture.jpg").expect("Failed to load leaves  texture");
 
     let LEAVES: Material = Material::new(
-        Color::new(34, 139, 34),    // Color verde típico de las hojas (#228B22)
-        20.0,                       // Brillo ligeramente más bajo para las hojas
+        Color::new(34, 139, 34),    // Color verde
+        10.0,                       // Brillo ligeramente más bajo para las hojas
         [0.6, 0.3, 0.0, 0.0],       // Propiedades: difuso, especular, reflectividad, transparencia
         1.0                         // Índice de refracción para superficies opacas
-    );
+    ).with_textures(vec![leaves_texture.clone()]);;
 
     // Material para Cristal
     let GLASS: Material = Material::new(
     Color::new(0, 0, 0),  
-    30.0,                      
+    60.0,                      
     [0.1, 0.1, 0.1, 0.5],       // Propiedades: bajo difuso, alto especular, sin reflectividad, alta transparencia
-    1.0                         // Índice de refracción típico para el vidrio
+    1.2                         // Índice de refracción típico para el vidrio
 );
     
     // Define los objetos que componen el portal
     let objects = [
         
-        Cube { min: Vec3::new(-4.0, -3.0, -4.0), max: Vec3::new(4.0, -2.0, 4.0), material: GRASS.clone() }, // Base de cesped
+        Cube { min: Vec3::new(-4.0, -0.5, -4.0), max: Vec3::new(4.0, 0.0, 4.0), material: GRASS.clone() }, // Base de cesped
        
-      // Pared trasera (parte de atrás de la casa)
-      Cube { min: Vec3::new(-2.0, -2.0, -2.0), max: Vec3::new(2.0, 0.0, -1.5), material: WOOD.clone() },
+      // Pared trasera
+      Cube { min: Vec3::new(-1.5, 0.0, -1.5), max: Vec3::new(1.5, 2.0, -1.0), material: WOOD.clone() },
 
       // Pared izquierda
-      Cube { min: Vec3::new(-2.0, -2.0, -2.0), max: Vec3::new(-1.5, 0.0, 2.0), material: WOOD.clone() },
-   
+      Cube { min: Vec3::new(-1.5, 0.0, -1.5), max: Vec3::new(-1.0, 2.0, 1.5), material: WOOD.clone() },
+
       // Parte inferior de la pared derecha
-      Cube { min: Vec3::new(1.5, -2.0, -2.0), max: Vec3::new(2.0, -1.5, 2.0), material: WOOD.clone() },
+      Cube { min: Vec3::new(1.0, 0.0, -1.5), max: Vec3::new(1.5, 0.5, 1.5), material: WOOD.clone() },
 
-    // Parte derecha de la pared derecha
-    Cube { min: Vec3::new(1.5, -2.0, -2.0), max: Vec3::new(2.0, 0.0, -0.5), material: WOOD.clone() },   
+      // Parte derecha de la pared derecha
+      Cube { min: Vec3::new(1.0, 0.0, -1.5), max: Vec3::new(1.5, 2.0, -0.5), material: WOOD.clone() },   
 
-    // Parte izquierda de la pared derecha
-    Cube { min: Vec3::new(1.5, -2.0, 1.5), max: Vec3::new(2.0, 0.0, 0.5), material: WOOD.clone() },
+      // Parte izquierda de la pared derecha
+      Cube { min: Vec3::new(1.0, 0.0, 0.5), max: Vec3::new(1.5, 2.0, 1.5), material: WOOD.clone() },
 
-    // Parte superior de la pared derecha (arriba de la ventana)
-     Cube { min: Vec3::new(1.5, -0.5, -2.0), max: Vec3::new(2.0, 0.0, 2.0), material: WOOD.clone() },
+      // Parte superior de la pared derecha (arriba de la ventana)
+      Cube { min: Vec3::new(1.0, 1.5, -1.5), max: Vec3::new(1.5, 2.0, 1.5), material: WOOD.clone() },
 
-     // Cristal para la ventana
-    Cube { min: Vec3::new(1.5, -2.0, 0.5), max: Vec3::new(2.0, -0.5, -0.5), material: GLASS.clone() },
-    
+      // Cristal para la ventana
+      Cube { min: Vec3::new(1.0, 0.5, -0.5), max: Vec3::new(1.5, 1.5, 0.5), material: GLASS.clone() },
 
       // Pared frontal izquierda (antes de la puerta)
-      Cube { min: Vec3::new(-2.0, -2.0, 1.5), max: Vec3::new(-0.5, 0.0, 2.0), material: WOOD.clone() },
-  
+      Cube { min: Vec3::new(-1.5, 0.0, 1.0), max: Vec3::new(-0.5, 2.0, 1.5), material: WOOD.clone() },
+
       // Pared frontal derecha (después de la puerta)
-      Cube { min: Vec3::new(0.5, -2.0, 1.5), max: Vec3::new(2.0, 0.0, 2.0), material: WOOD.clone() },
-  
+      Cube { min: Vec3::new(0.5, 0.0, 1.0), max: Vec3::new(1.5, 2.0, 1.5), material: WOOD.clone() },
+
       // Pared frontal encima de la puerta
-      Cube { min: Vec3::new(-0.5, -1.0, 1.5), max: Vec3::new(0.5, 0.0, 2.0), material: WOOD.clone() },
-  
+      Cube { min: Vec3::new(-0.5, 1.0, 1.0), max: Vec3::new(0.5, 2.0, 1.5), material: WOOD.clone() },
+
       // Techo de la casa
-      Cube { min: Vec3::new(-2.5, 0.0, -2.5), max: Vec3::new(2.5, 0.5, 2.5), material: STONE.clone() },
-      Cube { min: Vec3::new(-2.0, 0.5, -2.0), max: Vec3::new(2.0, 1.0, 2.0), material: STONE.clone() },
-      Cube { min: Vec3::new(-1.5, 1.0, -1.5), max: Vec3::new(1.5, 1.5, 1.5), material: STONE.clone() },
-      Cube { min: Vec3::new(-1.0, 1.5, -1.0), max: Vec3::new(1.0, 2.0, 1.0), material: STONE.clone() },
+      Cube { min: Vec3::new(-2.0, 2.0, -2.0), max: Vec3::new(2.0, 2.5, 2.0), material: STONE.clone() },
+      Cube { min: Vec3::new(-1.5, 2.5, -1.5), max: Vec3::new(1.5, 3.0, 1.5), material: STONE.clone() },
+      Cube { min: Vec3::new(-1.0, 3.0, -1.0), max: Vec3::new(1.0, 3.5, 1.0), material: STONE.clone() },
+      Cube { min: Vec3::new(-0.5, 3.5, -0.5), max: Vec3::new(0.5, 4.0, 0.5), material: STONE.clone() },
 
+      // Árbol (movido un bloque hacia adelante)
+      // Tronco del árbol
+      Cube { min: Vec3::new(-3.0, 0.0, 3.0), max: Vec3::new(-2.5, 0.5, 3.5), material: TREEWOOD.clone() },
+      Cube { min: Vec3::new(-3.0, 0.5, 3.0), max: Vec3::new(-2.5, 1.0, 3.5), material: TREEWOOD.clone() },
+      Cube { min: Vec3::new(-3.0, 1.0, 3.0), max: Vec3::new(-2.5, 1.5, 3.5), material: TREEWOOD.clone() },
+      Cube { min: Vec3::new(-3.0, 1.5, 3.0), max: Vec3::new(-2.5, 2.0, 3.5), material: TREEWOOD.clone() },
 
-     // Tronco del árbol (hecho de 4 cubos de madera apilados en la esquina superior izquierda)
-     Cube { min: Vec3::new(-3.5, -2.0, 3.0), max: Vec3::new(-3.0, -1.5, 3.5), material: TREEWOOD.clone() },
-     Cube { min: Vec3::new(-3.5, -1.5, 3.0), max: Vec3::new(-3.0, -1.0, 3.5), material: TREEWOOD.clone() },
-     Cube { min: Vec3::new(-3.5, -1.0, 3.0), max: Vec3::new(-3.0, -0.5, 3.5), material: TREEWOOD.clone() },
-     Cube { min: Vec3::new(-3.5, -0.5, 3.0), max: Vec3::new(-3.0, 0.0, 3.5), material: TREEWOOD.clone() },
- 
-     // Hojas del árbol (hechas de cubos, ajustadas a la nueva posición)
-     Cube { min: Vec3::new(-4.0, 0.0, 2.5), max: Vec3::new(-2.5, 0.5, 4.0), material: LEAVES.clone() }, // Capa inferior de hojas
-     Cube { min: Vec3::new(-3.75, 0.5, 2.75), max: Vec3::new(-2.75, 1.0, 3.75), material: LEAVES.clone() }, // Capa superior de hojas
- 
+      // Hojas del árbol
+      Cube { min: Vec3::new(-3.5, 2.0, 2.5), max: Vec3::new(-2.0, 2.5, 4.0), material: LEAVES.clone() },
+      Cube { min: Vec3::new(-3.5, 2.5, 2.5), max: Vec3::new(-2.0, 3.0, 4.0), material: LEAVES.clone() },
+      Cube { min: Vec3::new(-3.0, 3.0, 3.0), max: Vec3::new(-2.5, 3.5, 3.5), material: LEAVES.clone() },
   ];
 
 
@@ -430,6 +447,9 @@ fn main() {
     let zoom_speed = 0.5;
     const MAX_ZOOM: f32 = 1.0;
     const MIN_ZOOM: f32 = 10.0;
+
+
+    let stone_texture = Texture::load("assets/stone_block.jpg").expect("Failed to load stone texture");
 
 
     while window.is_open() {
